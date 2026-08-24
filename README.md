@@ -10,13 +10,29 @@ GCash提链工具,自动生成登录态二维码,,自动检测支付是否到账
 ## 输入约定
 
 - `accessToken`：每行一个，支持多行输入；空行会忽略，重复值会去重。
-- `checkout_proxy_pool`：每行一个完整代理 URL。
-- `promotion_proxy_pool`：每行一个完整代理 URL。
+- `billing_exit_proxy_pool`：每行一个完整代理 URL，用于账单出口。
+- `promotion_exit_proxy_pool`：每行一个完整代理 URL，用于促销出口。
 - 两个代理池独立轮询，不能把代理凭据写进代码、日志、测试 fixture 或仓库。
 
-代理只接受带协议的 URL，例如 `http://host:port`、`https://host:port`、
-`socks5://host:port` 或 `socks5h://host:port`。不接受未定义含义的
-`host:port:user:password` 裸格式，避免不同供应商的解释不一致。
+代理支持带协议的 URL，例如 `http://host:port`、`https://host:port`、
+`socks5://host:port` 或 `socks5h://host:port`。常见的 `host:port` 和
+`host:port:user:password` 裸格式按 HTTP 代理解析；SOCKS 代理必须显式填写协议。
+
+程序只检测固定地址 `socks5h://127.0.0.1:7897`：该端口提供 SOCKS5 或 mixed-port
+时，自动组成“本机 Clash/VPN → HTTP 供应商代理 → 目标站”的代理链；未监听或不支持
+SOCKS5 时直接连接供应商代理。本机代理只负责连到供应商入口，目标站看到的最终出口
+仍是输入框中的供应商代理。
+
+## 运行
+
+Windows 双击 `start.bat`。脚本会检查 Python 3.11+、Node.js 20+，创建 `.venv`、
+安装依赖并打开 `http://127.0.0.1:8765/`。
+
+任务会在同一个 HTTP Session、同一个出口和同一个浏览器画像内依次执行自定义 Checkout、
+加载 Checkout 页面上下文、PH 账单校验、零元确认、GCash 二维码生成、扫码授权轮询、
+支付回跳及成功页同步。第二个促销出口输入仍为兼容字段，但源项目 GCash 链路不会在中途
+切换代理，以免丢失 Cookie、apsessionId 和授权状态。浏览器会记住三组输入及并发/重试设置；
+任务摘要和二维码保存在本机，持久化文件不包含 Token 和代理。
 
 
 ## 参考项目与致谢

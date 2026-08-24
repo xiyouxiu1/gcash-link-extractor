@@ -8,25 +8,16 @@
   </head>
   <body>
     <div class="app-shell">
-      <header class="topbar">
-        <div class="brand-lockup">
-          <span class="brand-mark" aria-hidden="true">GC</span>
-          <div>
-            <p class="eyebrow">LOCAL CONSOLE / PHILIPPINES</p>
-            <h1>GCash Link Extractor</h1>
-          </div>
-        </div>
-        <div class="runtime-badge"><span class="status-dot"></span><span>本机运行</span></div>
-      </header>
+
 
       <main class="workspace">
         <section class="control-panel panel">
           <div class="panel-heading">
             <div>
-              <p class="section-kicker">01 / INPUTS</p>
-              <h2>批量任务</h2>
+
+              <h2>填写信息</h2>
             </div>
-            <span class="panel-count">3 INPUTS</span>
+
           </div>
           <form id="batch-form">
             <label class="field-block">
@@ -34,45 +25,54 @@
               <textarea id="access-tokens" name="access_tokens" rows="7" spellcheck="false" placeholder="每行一个 accessToken"></textarea>
             </label>
             <label class="field-block">
-              <span class="field-label"><span>Checkout 代理池</span><span class="field-index">B</span></span>
-              <textarea id="checkout-proxies" name="checkout_proxies" rows="4" spellcheck="false" placeholder="http://host:port&#10;socks5h://host:port"></textarea>
+              <span class="field-label"><span>账单出口代理池</span><span class="field-index">B</span></span>
+              <textarea id="billing-exit-proxies" name="billing_exit_proxies" rows="4" spellcheck="false" placeholder="host:port:user:password&#10;http://host:port"></textarea>
             </label>
             <label class="field-block">
-              <span class="field-label"><span>第二代理池</span><span class="field-index">C</span></span>
-              <textarea id="promotion-proxies" name="promotion_proxies" rows="4" spellcheck="false" placeholder="http://host:port&#10;socks5h://host:port"></textarea>
+              <span class="field-label"><span>促销出口代理池</span><span class="field-index">C</span></span>
+              <textarea id="promotion-exit-proxies" name="promotion_exit_proxies" rows="4" spellcheck="false" placeholder="host:port:user:password&#10;http://host:port"></textarea>
             </label>
+
             <div class="form-actions">
-              <button class="primary-button" type="submit"><span class="button-dot"></span>开始分析</button>
-              <button class="secondary-button" id="clear-button" type="button">清空列表</button>
+              <label class="number-field">
+                <span>并发数</span>
+                <input id="concurrency" name="concurrency" type="number" value="10" min="1" max="1000" step="1" inputmode="numeric" />
+              </label>
+              <label class="number-field">
+                <span>重试数</span>
+                <input id="retry-count" name="retry_count" type="number" value="3" min="0" max="20" step="1" inputmode="numeric" />
+              </label>
+              <button class="primary-button" type="submit"><span class="button-dot"></span>开始提链</button>
             </div>
           </form>
-          <p class="quiet-note">Token 和代理只在本机内存中处理。当前列表阶段不发起网络请求。</p>
-        </section>
+     </section>
 
         <section class="tasks-panel panel">
           <div class="panel-heading task-heading">
             <div>
-              <p class="section-kicker">02 / QUEUE</p>
               <h2>任务列表</h2>
             </div>
-            <div class="queue-meta"><span id="task-count">0</span><span>条记录</span></div>
+            <div class="task-heading-actions">
+              <button class="clear-completed-button" id="clear-completed-button" type="button">清理未在进行中的任务</button>
+              <div class="queue-meta" aria-label="任务统计">
+                <span class="queue-total"><strong id="task-count">0</strong><span>条记录</span></span>
+                <span class="queue-stat queue-stat-progress"><strong id="progress-count">0</strong><span>进行中</span></span>
+                <span class="queue-stat queue-stat-success"><strong id="success-count">0</strong><span>成功</span></span>
+                <span class="queue-stat queue-stat-failure"><strong id="failure-count">0</strong><span>失败</span></span>
+              </div>
+            </div>
           </div>
-          <div class="stage-strip">
-            <span class="stage-marker active"></span><span>邮箱识别</span>
-            <span class="stage-line"></span>
-            <span class="stage-marker"></span><span>协议执行器</span>
-          </div>
+
           <div class="task-list" id="task-list" aria-live="polite">
             <div class="empty-state">
-              <span class="empty-number">00</span>
-              <div><strong>暂无任务</strong><p>填写三组输入后开始分析。</p></div>
+              <div><strong>暂无任务</strong></div>
             </div>
           </div>
           <div class="inline-notice" id="notice" role="status" hidden></div>
         </section>
       </main>
 
-      <footer class="footer-line"><span>GCASH / LOCAL ONLY</span><span>NO CREDENTIALS PERSISTED</span></footer>
+
     </div>
     <script src="/app.js" defer></script>
   </body>

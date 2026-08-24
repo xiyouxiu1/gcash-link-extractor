@@ -1,6 +1,7 @@
 @echo off
 setlocal EnableExtensions DisableDelayedExpansion
 chcp 65001 >nul
+set "PYTHONUTF8=1"
 cd /d "%~dp0"
 
 set "NO_PAUSE="
@@ -38,6 +39,22 @@ if errorlevel 1 (
     echo [错误] 当前 Python 版本低于 3.11：
     "%PYTHON%" --version
     echo 请安装：https://www.python.org/downloads/windows/
+    goto :failed
+)
+
+where node >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 未检测到 Node.js 20 或更高版本，GCash Checkout 的 Sentinel SDK 无法运行。
+    echo 请安装：https://nodejs.org/en/download
+    echo 或执行：winget install OpenJS.NodeJS.LTS
+    goto :failed
+)
+
+node -e "process.exit(Number(process.versions.node.split('.')[0]) >= 20 ? 0 : 1)" >nul 2>&1
+if errorlevel 1 (
+    echo [错误] 当前 Node.js 版本低于 20：
+    node --version
+    echo 请安装：https://nodejs.org/en/download
     goto :failed
 )
 
