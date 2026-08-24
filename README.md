@@ -1,7 +1,6 @@
 # GCash Link Extractor
 
-自有 GCash Checkout 协议研究项目。当前仓库只负责输入层和任务编排边界，
-不接入 1key、pay.153.ink 或其他第三方提链 Provider。
+自有 GCash Checkout 协议研究项目。当前仓库只负责输入层和任务编排边界。
 
 ## 项目定位
 
