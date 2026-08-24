@@ -4,18 +4,14 @@ chcp 65001 >nul
 cd /d "%~dp0"
 
 set "NO_PAUSE="
-if /I "%~1"=="--no-pause" (
-    set "NO_PAUSE=1"
-    shift
-)
-
-set "APP_ARGS="
-:collect_args
-if "%~1"=="" goto args_collected
-set "APP_ARGS=%APP_ARGS% %~1"
+set "CHECK_MODE="
+:collect_options
+if "%~1"=="" goto options_done
+if /I "%~1"=="--no-pause" set "NO_PAUSE=1"
+if /I "%~1"=="--check" set "CHECK_MODE=1"
 shift
-goto collect_args
-:args_collected
+goto collect_options
+:options_done
 
 set "PYTHON="
 where py >nul 2>&1
@@ -78,8 +74,13 @@ if exist "%~dp0requirements.txt" (
     )
 )
 
-echo [信息] 启动 GCash Link Extractor...
-"%VENV_PYTHON%" -m gcash_linker %APP_ARGS%
+if defined CHECK_MODE (
+    echo [信息] 正在执行环境检查...
+    "%VENV_PYTHON%" -m gcash_linker --check
+) else (
+    echo [信息] 正在启动本地 Web 控制台...
+    "%VENV_PYTHON%" -m gcash_linker.web --host 127.0.0.1 --port 8765
+)
 set "EXIT_CODE=%ERRORLEVEL%"
 if not "%EXIT_CODE%"=="0" (
     echo [错误] 程序退出，代码：%EXIT_CODE%
