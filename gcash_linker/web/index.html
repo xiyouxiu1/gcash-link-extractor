@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>GCash Link Extractor</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <span class="brand-mark" aria-hidden="true">GC</span>
+          <div>
+            <p class="eyebrow">LOCAL CONSOLE / PHILIPPINES</p>
+            <h1>GCash Link Extractor</h1>
+          </div>
+        </div>
+        <div class="runtime-badge"><span class="status-dot"></span><span>本机运行</span></div>
+      </header>
+
+      <main class="workspace">
+        <section class="control-panel panel">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">01 / INPUTS</p>
+              <h2>批量任务</h2>
+            </div>
+            <span class="panel-count">3 INPUTS</span>
+          </div>
+          <form id="batch-form">
+            <label class="field-block">
+              <span class="field-label"><span>accessToken</span><span class="field-index">A</span></span>
+              <textarea id="access-tokens" name="access_tokens" rows="7" spellcheck="false" placeholder="每行一个 accessToken"></textarea>
+            </label>
+            <label class="field-block">
+              <span class="field-label"><span>Checkout 代理池</span><span class="field-index">B</span></span>
+              <textarea id="checkout-proxies" name="checkout_proxies" rows="4" spellcheck="false" placeholder="http://host:port&#10;socks5h://host:port"></textarea>
+            </label>
+            <label class="field-block">
+              <span class="field-label"><span>第二代理池</span><span class="field-index">C</span></span>
+              <textarea id="promotion-proxies" name="promotion_proxies" rows="4" spellcheck="false" placeholder="http://host:port&#10;socks5h://host:port"></textarea>
+            </label>
+            <div class="form-actions">
+              <button class="primary-button" type="submit"><span class="button-dot"></span>开始分析</button>
+              <button class="secondary-button" id="clear-button" type="button">清空列表</button>
+            </div>
+          </form>
+          <p class="quiet-note">Token 和代理只在本机内存中处理。当前列表阶段不发起网络请求。</p>
+        </section>
+
+        <section class="tasks-panel panel">
+          <div class="panel-heading task-heading">
+            <div>
+              <p class="section-kicker">02 / QUEUE</p>
+              <h2>任务列表</h2>
+            </div>
+            <div class="queue-meta"><span id="task-count">0</span><span>条记录</span></div>
+          </div>
+          <div class="stage-strip">
+            <span class="stage-marker active"></span><span>邮箱识别</span>
+            <span class="stage-line"></span>
+            <span class="stage-marker"></span><span>协议执行器</span>
+          </div>
+          <div class="task-list" id="task-list" aria-live="polite">
+            <div class="empty-state">
+              <span class="empty-number">00</span>
+              <div><strong>暂无任务</strong><p>填写三组输入后开始分析。</p></div>
+            </div>
+          </div>
+          <div class="inline-notice" id="notice" role="status" hidden></div>
+        </section>
+      </main>
+
+      <footer class="footer-line"><span>GCASH / LOCAL ONLY</span><span>NO CREDENTIALS PERSISTED</span></footer>
+    </div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>
