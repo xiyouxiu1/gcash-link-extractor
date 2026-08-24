@@ -423,3 +423,29 @@ def test_due_amount_reads_stripe_checkout_session_amount_total():
 
     assert _due_amount({"checkout_session": {"amount_total": 0}}) == 0
     assert _due_amount({"checkout_session": {"amount_total": 1999}}) == 1999
+
+
+def test_due_amount_matches_source_oaics_minor_units_wrappers():
+    from gcash_linker.gcash_protocol import _due_amount, oaics_amount_observations
+
+    zero_payload = {
+        "result": {
+            "checkout_session": {
+                "payment_method_types": ["gcash"],
+                "total": {"total": {"minorUnitsAmount": 0, "currency": "PHP"}},
+                # 原价不是应付金额，不能被优先读取。
+                "unit_price": {"minorUnitsAmount": 110000},
+            }
+        }
+    }
+    nonzero_payload = {
+        "data": {
+            "checkoutState": {
+                "totalSummary": {"due": {"minor_units_amount": 1999}},
+            }
+        }
+    }
+
+    assert _due_amount(zero_payload) == 0
+    assert _due_amount(nonzero_payload) == 1999
+    assert all("unit_price" not in path for path, _ in oaics_amount_observations(zero_payload))

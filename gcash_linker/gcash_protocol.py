@@ -11,7 +11,6 @@ import socket
 import time
 import uuid
 from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
 from typing import Any, Callable, Iterator
 from urllib.parse import parse_qs, urlencode, urljoin, urlsplit, urlunsplit
 
@@ -201,7 +200,7 @@ def _supports_socks5(host: str, port: int) -> bool:
 
 
 class GCashProtocol:
-    """单账号完整协议；一次运行内账单出口固定，促销出口只用于 update。"""
+    """单账号完整 OAICS GCash 协议；整条链路固定同一个 Session 和出口。"""
 
     def __init__(
         self,
@@ -240,6 +239,9 @@ class GCashProtocol:
             _ = promotion_proxy
             _report(progress, "正在建立 GCash 出口会话", 12)
             session = self.session_factory(billing_proxy)
+            # 源项目在整个 OAICS 链路中复用同一 Session；把它挂到上下文，
+            # 让后续请求头可以读取当前 Cookie 派生的浏览器观察标识。
+            setattr(context, "_session", session)
             _apply_session_profile(context, session)
             self._bootstrap(session, context)
 
@@ -356,6 +358,11 @@ class GCashProtocol:
             ).strip()
             if verify_session_id:
                 context.session_id = verify_session_id
+            verify_attestation = str(
+                getattr(session, "_protocol_oai_web_deployment_attestation", "") or ""
+            ).strip()
+            if verify_attestation:
+                context.attestation = verify_attestation
             _report(
                 progress,
                 "正在提交 GCash 授权结果",
@@ -509,10 +516,9 @@ class GCashProtocol:
             )
             status = int(getattr(response, "status_code", 0) or 0)
             body = str(getattr(response, "text", "") or "")
-            if status == 200:
-                # Checkout 页面签发的 sessionId 优先于启动阶段的临时 UUID；
-                # 后续 taxes/confirm/continue 必须沿用这个页面上下文。
-                _apply_page_context(context, body, prefer_session_id=True)
+            # 源项目即使页面响应不是 200 也先尝试解析动态字段；部分 CDN
+            # 响应会带上下文片段，后续协议请求仍应复用它。
+            _apply_page_context(context, body, prefer_session_id=True)
             return {
                 "ok": status == 200,
                 "http": status,
@@ -1009,14 +1015,24 @@ class GCashProtocol:
                     "Accept-Language": "en-PH,en;q=0.9",
                     "Referer": verify_url or success_page,
                     "User-Agent": context.user_agent,
+                    **(
+                        {"x-oai-is-client-observation": observation}
+                        if (observation := _client_observation_from_session(
+                            getattr(context, "_session", None)
+                        )) else {}
+                    ),
                 },
                 timeout=min(45, self.request_timeout),
             )
             body = str(getattr(response, "text", "") or "")
             result["success_data_ok"] = (
                 int(getattr(response, "status_code", 0) or 0) == 200
+                and "postCheckoutResult" in body
                 and "success" in body.lower()
             )
+            if not result["success_data_ok"]:
+                result["error"] = "payments/success.data 未确认 success"
+                return result
         except Exception as exc:
             result["error"] = _safe_error_text(str(exc))
             return result
@@ -1034,6 +1050,12 @@ class GCashProtocol:
                         "User-Agent": context.user_agent,
                         "x-openai-target-path": route,
                         "x-openai-target-route": route,
+                        **(
+                            {"x-oai-is-client-observation": observation}
+                            if (observation := _client_observation_from_session(
+                                getattr(context, "_session", None)
+                            )) else {}
+                        ),
                     },
                     timeout=min(45, self.request_timeout),
                 )
@@ -1202,6 +1224,32 @@ def _jwt_account_id(token: str) -> str:
         return ""
 
 
+def _client_observation_from_session(session: Any | None) -> str:
+    """从当前 Session 的 __Secure-oai-is Cookie 恢复浏览器观察标识。
+
+    这是源项目浏览器请求中的短期身份头，只在本次协议 Session 内使用，
+    不写入账号记录或任务结果。
+    """
+    if session is None:
+        return ""
+    existing = str(getattr(session, "_protocol_oai_is_client_observation", "") or "").strip()
+    if existing:
+        return existing
+    try:
+        raw = str((session.cookies.get_dict() or {}).get("__Secure-oai-is") or "").strip()
+    except Exception:
+        return ""
+    parts = raw.split(".")
+    if len(parts) < 4 or parts[0] != "ois1" or not parts[2]:
+        return ""
+    value = f"v1.r.p.{parts[2]}"
+    try:
+        setattr(session, "_protocol_oai_is_client_observation", value)
+    except Exception:
+        pass
+    return value
+
+
 def _checkout_headers(
     token: str,
     context: BrowserContext,
@@ -1237,6 +1285,9 @@ def _checkout_headers(
         headers["oai-client-version"] = context.client_version
     if context.attestation:
         headers["oai-web-deployment-attestation"] = context.attestation
+    observation = _client_observation_from_session(getattr(context, "_session", None))
+    if observation:
+        headers["x-oai-is-client-observation"] = observation
     return headers
 
 
@@ -1249,13 +1300,32 @@ def _apply_page_context(
     patterns = {
         "client_build_number": r'data-seq="([^"]+)"',
         "client_version": r'data-build="([^"]+)"',
-        "attestation": r'"webDeploymentAttestation"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"',
-        "session_id": r'"sessionId"\s*:\s*"([0-9a-fA-F-]{16,64})"',
     }
     for field, pattern in patterns.items():
         match = re.search(pattern, html)
-        if match and (field != "session_id" or prefer_session_id or not context.session_id):
+        if match:
             setattr(context, field, match.group(1))
+
+    # Checkout/.data/verify 页面动态签发的值必须沿用到后续 taxes、confirm、
+    # start 和 continue 请求；不要把抓包中的旧值固化到配置里。
+    for key, field in (
+        ("webDeploymentAttestation", "attestation"),
+        ("sessionId", "session_id"),
+    ):
+        match = re.search(
+            rf'"{re.escape(key)}"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"',
+            html,
+        )
+        if not match:
+            continue
+        value = match.group(1)
+        try:
+            value = json.loads(f'"{value}"')
+        except Exception:
+            pass
+        value = str(value or "").strip()
+        if value and (field != "session_id" or prefer_session_id or not context.session_id):
+            setattr(context, field, value)
     sdk_match = re.search(r'(?:https://chatgpt\.com)?(/sentinel/[A-Za-z0-9_-]+/sdk\.js)', html)
     if sdk_match:
         context.sentinel_sdk_url = urljoin(CHATGPT_ORIGIN, sdk_match.group(1))
@@ -1329,7 +1399,13 @@ def _billing_details(created: dict[str, Any], email: str) -> dict[str, Any]:
     }
     normalized["country"] = "PH"
     if not normalized.get("line1"):
-        normalized.update({"line1": "1 Ayala Avenue", "city": "Makati", "postal_code": "1200"})
+        # 与源项目 GCash fallback 保持一致；只有创建响应没有账单档案时才使用。
+        normalized.update({
+            "line1": "1000 Roxas Boulevard",
+            "city": "Manila",
+            "state": "Metro Manila",
+            "postal_code": "1000",
+        })
     return {
         "email": str(state.get("email") or email),
         "name": str(billing.get("name") or "GCash Account Owner"),
@@ -1337,43 +1413,83 @@ def _billing_details(created: dict[str, Any], email: str) -> dict[str, Any]:
     }
 
 
-def _decimal(value: Any) -> Decimal | None:
+# OAICS Checkout 的应付金额可能被包在 checkout_session/session/data/result
+# 等多层对象中。金额对象的 minorUnitsAmount 才是源项目使用的最小货币单位；
+# 不读取 unit price，避免把原价误判成折后应付金额。
+_OAICS_WRAPPER_KEYS = (
+    "checkout_session", "checkoutSession", "session", "checkout", "data",
+    "result", "payload", "response", "checkout_state", "checkoutState",
+    "checkout_snapshot", "checkoutSnapshot",
+)
+_OAICS_AMOUNT_PATHS = (
+    ("checkout_amount_minor",),
+    ("total_summary", "due"), ("totalSummary", "due"),
+    ("invoice", "amount_due"), ("invoice", "amountDue"),
+    ("amount_due",), ("amountDue",), ("amount_total",), ("amountTotal",),
+    ("total", "total"), ("total", "due"),
+    ("total", "taxInclusive"), ("total", "taxInclusiveAmount"),
+)
+
+
+def _nested_value(payload: Any, path: tuple[str, ...]) -> Any:
+    current = payload
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _oaics_money_minor(value: Any) -> int | None:
+    if isinstance(value, dict):
+        for key in ("minorUnitsAmount", "minor_units_amount", "amount"):
+            if value.get(key) is not None:
+                return _oaics_money_minor(value.get(key))
+        return None
     if isinstance(value, bool) or value is None:
         return None
-    if isinstance(value, dict):
-        for key in ("amount", "value", "total", "due"):
-            parsed = _decimal(value.get(key))
-            if parsed is not None:
-                return parsed
-        return None
     try:
-        return Decimal(str(value).strip())
-    except (InvalidOperation, ValueError):
+        return int(value)
+    except (TypeError, ValueError):
         return None
 
 
-def _due_amount(payload: dict[str, Any]) -> Decimal | None:
-    paths = (
-        ("total", "total"),
-        ("amount_total",),
-        ("total_summary", "due"),
-        ("total_summary", "total"),
-        ("invoice", "amount_due"),
-        ("amount_due",),
-        ("amount",),
-    )
-    for item in _walk_dicts(payload):
-        for path in paths:
-            value: Any = item
-            for key in path:
-                if not isinstance(value, dict) or key not in value:
-                    value = None
-                    break
-                value = value[key]
-            parsed = _decimal(value)
-            if parsed is not None:
-                return parsed
-    return None
+def oaics_amount_observations(payload: Any) -> list[tuple[str, int]]:
+    """从 OAICS 响应中提取应付金额证据，保留字段路径便于诊断。"""
+    observations: list[tuple[str, int]] = []
+    visited: set[int] = set()
+
+    def visit(value: Any, prefix: str = "") -> None:
+        if not isinstance(value, dict) or id(value) in visited:
+            return
+        visited.add(id(value))
+        for path in _OAICS_AMOUNT_PATHS:
+            amount = _oaics_money_minor(_nested_value(value, path))
+            if amount is not None:
+                observations.append((f"{prefix}{'.'.join(path)}", amount))
+        for key in _OAICS_WRAPPER_KEYS:
+            nested = value.get(key)
+            if isinstance(nested, dict):
+                visit(nested, f"{prefix}{key}.")
+
+    visit(payload or {})
+    return list(dict.fromkeys(observations))
+
+
+def _due_amount(payload: dict[str, Any]) -> int | None:
+    """返回 OAICS 应付金额最小单位；兼容目标项目旧 amount_total fixture。"""
+    observations = oaics_amount_observations(payload)
+    if not observations:
+        return None
+    priority = ("total.total", "total_summary.due", "invoice.amount_due", "amount_due")
+    for label, amount in observations:
+        if label.endswith(priority[0]) or label.endswith(priority[1]):
+            return amount
+    return observations[0][1]
+
+
+# 源项目公开的命名，便于后续协议步骤和测试直接复用同一金额口径。
+oaics_due_amount = _due_amount
 
 
 def _gcash_custom_method(payload: dict[str, Any]) -> str:
