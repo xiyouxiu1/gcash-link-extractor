@@ -9,10 +9,11 @@
 2. 没有 Python 时显示官方下载地址和 `winget install Python.Python.3.12` 命令。
 3. 创建项目专用 `.venv`，检查并修复 `pip`。
 4. 按 `requirements.txt` 安装运行依赖；安装失败时显示可复制的手动命令。
-5. 启动 `python -m gcash_linker`。
+5. 启动本地 Web 控制台 `http://127.0.0.1:8765/` 并自动打开浏览器。
 
-当前阶段 CLI 只进行多行 `accessToken`、双代理池输入校验和脱敏摘要预览，不发起真实
-网络请求。未来新增固定依赖时，只需将依赖写入 `requirements.txt`，启动脚本会自动安装。
+当前阶段 Web 控制台只进行多行 `accessToken`、双代理池输入校验、JWT 邮箱识别和任务
+摘要预览，不发起真实网络请求。命令行入口仍可用 `python -m gcash_linker`；未来新增
+固定依赖时，只需将依赖写入 `requirements.txt`，启动脚本会自动安装。
 
 命令行验证启动环境时可以执行：
 
