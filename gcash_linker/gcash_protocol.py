@@ -435,12 +435,10 @@ class GCashProtocol:
             },
             timeout=self.request_timeout,
         )
-        status = int(getattr(response, "status_code", 0) or 0)
-        if status == 403:
-            html = ""
-        else:
-            self._require_http(response, "加载 ChatGPT Checkout 页面")
-            html = str(getattr(response, "text", "") or "")
+        # 源项目把首页请求当作上下文预热，不把首页 HTTP 状态当成
+        # Checkout 主流程的成功条件；CDN 返回 403/429/5xx 时仍继续
+        # csrf 和 /backend-api/payments/checkout。
+        html = str(getattr(response, "text", "") or "")
         _apply_page_context(context, html)
         if not context.session_id:
             context.session_id = str(uuid.uuid4())
@@ -486,7 +484,9 @@ class GCashProtocol:
                 **sentinel_headers,
                 "OAI-Telemetry": "[1,null]",
             },
-            timeout=self.request_timeout,
+            # 源项目启用 Sentinel 时给 Checkout 创建请求至少 60 秒；
+            # 供应商代理较慢时不能提前按通用请求超时中断。
+            timeout=max(60, self.request_timeout),
         )
         return self._json_response(response, "创建 GCash Checkout")
 

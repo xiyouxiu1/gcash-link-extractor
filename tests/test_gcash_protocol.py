@@ -288,6 +288,20 @@ def test_checkout_page_preflight_403_does_not_block_checkout():
     assert [url for method, url, _ in billing.calls if method == "POST"][0] == CHECKOUT_URL
 
 
+def test_checkout_page_preflight_server_error_does_not_block_checkout():
+    protocol, billing, _, _ = _environment(bootstrap_status=503)
+
+    result = protocol.run(
+        _token(),
+        "http://billing.test:8000",
+        "http://promotion.test:8000",
+        lambda *_: None,
+    )
+
+    assert result["status"] == "success"
+    assert [url for method, url, _ in billing.calls if method == "POST"][0] == CHECKOUT_URL
+
+
 def test_authorization_timeout_happens_after_qr_is_reported():
     billing = FakeSession("billing", authorized=False)
     promotion = FakeSession("promotion", authorized=False)
